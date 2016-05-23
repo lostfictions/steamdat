@@ -88,44 +88,6 @@
     <a class="btn btn-sm" id="undo" href="#">Undo</a>
     <a class="btn btn-lg" id="new" href="#">Another</a>
   </div>
-  <script>
-    var qs = document.querySelector.bind(document)
-    var i = qs('.wrapper img')
-    var link = qs('.wrapper a')
-    var cap = qs('.wrapper .caption')
-
-    var game = {}
-    var hist = []
-
-    var n = qs('#new')
-    n.onclick = function(e) { e.preventDefault(); newGame() }
-
-    var u = qs('#undo')
-    u.onclick = function(e) { e.preventDefault(); undo() }
-
-    newGame()
-
-    function newGame() {
-      hist.push(game)
-      game = randomInArray(games)
-      i.setAttribute('src', game.img)
-      link.setAttribute('href', game.uri)
-      cap.textContent = game.name
-    }
-
-    function undo() {
-      if(hist.length <= 1) {
-        return
-      }
-
-      var h = hist.pop()
-      i.setAttribute('src', h.img)
-      link.setAttribute('href', h.uri)
-      cap.textContent = h.name
-    }
-
-    function randomInArray(arr) { return arr[Math.floor(Math.random() * arr.length)] }
-  </script>
+  <script src="index.js"></script>
 </body>
-
 </html>
