@@ -1,4 +1,4 @@
-/*eslint semi: ["error", "never"], strict: 0*/
+/*eslint strict: 0*/
 'use strict'
 
 const async = require('async')
@@ -119,6 +119,16 @@ async.waterfall(
 
           const revs = scraped.revs.split(' ')
 
+          let popularity = revs[3] && parseInt(revs[3].split(',').join(''), 10)
+          if(_.isNaN(popularity)) {
+            popularity = undefined
+          }
+
+          let ratings = revs[0] && parseInt(revs[0], 10)
+          if(_.isNaN(ratings)) {
+            ratings = undefined
+          }
+
           const tags = scraped.userTags.map(t => t.trim())
           const genres = getInDataBlock(details, 'Genre') || ''
 
@@ -128,8 +138,8 @@ async.waterfall(
             developer: getInDataBlock(details, 'Developer'),
             publisher: getInDataBlock(details, 'Publisher'),
             img: scraped.img,
-            popularity: parseInt(revs[3].split(',').join(''), 10),
-            rating: parseInt(revs[0], 10),
+            popularity: popularity,
+            rating: ratings,
             userTags: tags
           }))
         })
