@@ -1,67 +1,162 @@
 /*eslint semi: ["error", "never"], strict: 0*/
 'use strict'
 
-const x = require('x-ray')()
 const async = require('async')
 const fs = require('fs-extra')
-// const _ = require('lodash')
+const _ = require('lodash')
 const Download = require('download')
 const url = require('url')
 const path = require('path')
 
-const getLocalName = (uri) => url.parse(uri).pathname.split('/').slice(1).join('-')
+const request = require('request').defaults({
+  jar: true,
+  headers: {
+    'User-Agent': 'Mozilla/5.0 (Windows NT 6.1; WOW64; rv:44.0) Gecko/20100101 Firefox/44.0',
+    'Cookie': 'birthtime=28801; path=/; domain=store.steampowered.com'
+  }
+})
+const prequest = (opts) => new Promise((resolve, reject) => request(opts, (err, res, body) => _.isNil(err) ? resolve(body) : reject(err)))
+const requestDriver = (config = {}) => (ctx) => prequest(Object.assign({}, config, { uri: ctx.url} ))
+const x = require('x-ray')().driver(requestDriver())
 
+
+const getLocalName = (uri) => url.parse(uri).pathname.split('/').slice(1).join('-')
 
 const gams = fs.readFileSync('gams.txt').toString().split('\n')
 
-const searchUris = gams
-  // .slice(0, 13)
-  .map(g => 'http://store.steampowered.com/search/?snr=1_4_4__12&term=' + encodeURI(g))
+let gameData
+
+try {
+  gameData = fs.readJsonSync('progress.json')
+  let errorIndex
+  do {
+    errorIndex = gameData.findIndex(d => _.isNil(d))
+    if(errorIndex !== -1) {
+      console.log('Error index: ', errorIndex)
+      gameData[errorIndex] = {
+        name: gams[errorIndex],
+        index: errorIndex,
+        searchUri: 'http://store.steampowered.com/search/?snr=1_4_4__12&term=' + encodeURI(gams[errorIndex])
+      }
+    }
+  } while(errorIndex !== -1)
+}
+catch(e) {
+  gameData = gams
+    // .slice(0, 13)
+    .map((gameName, index) => ({
+      name: gameName,
+      index: index,
+      searchUri: 'http://store.steampowered.com/search/?snr=1_4_4__12&term=' + encodeURI(gameName)
+    }))
+}
 
 async.waterfall(
   [
     (cb) => async.mapLimit(
-      searchUris.map((v, i) => ({val: v, ind: i})),
+      gameData,
       2,
-      (searchUri, cb2) => {
-        console.log(`Searching game (${searchUri.ind + 1} / ${searchUris.length}) "${searchUri.val}"...`)
-        x(searchUri.val, '.search_result_row@href')((e, href) => cb2(e, href))
+      (gameDatum, cb2) => {
+        if(gameDatum.gameUri) {
+          console.log(`SKIPPING game (${gameDatum.index + 1} / ${gameData.length}) "${gameDatum.name}"...`)
+          cb2(null, gameDatum)
+          return
+        }
+        console.log(`Searching game (${gameDatum.index + 1} / ${gameData.length}) "${gameDatum.name}"...`)
+        x(gameDatum.searchUri, '.search_result_row@href')((e, href) => {
+          if(e) {
+            console.error(e)
+          }
+          cb2(e, Object.assign({}, gameDatum, { gameUri: href }))
+        })
       },
-      (e, uris) => { console.log('Got ' + uris.length + ' uris!'); cb(e, uris) }
+      (e, newData) => {
+        if(e) {
+          console.error(e)
+          let validData = newData
+          const errorIndex = newData.findIndex(d => _.isNil(d))
+          if(errorIndex !== -1) {
+            console.log('Error index: ', errorIndex)
+            validData = newData.slice(0, errorIndex)
+          }
+          console.log(`${validData.length} valid entries of ${newData.length}`)
+          fs.outputJsonSync('progress.json', validData.concat(gameData.slice(validData.length)))
+          console.log(`Wrote ${validData.length} progress entries into progress.json`)
+        }
+        console.log('Got ' + newData.length + ' uris!'); cb(e, newData)
+      }
     ),
-    (uris, cb) => async.mapLimit(
-      uris.map((v, i) => ({val: v, ind: i})),
+    (dataWithGameUris, cb) => fs.outputJson('progress.json', dataWithGameUris, e => cb(e, dataWithGameUris)),
+    (dataWithGameUris, cb) => async.mapLimit(
+      dataWithGameUris,
       2,
-      (uri, cb2) => {
-        console.log(`Scraping page (${uri.ind + 1} / ${uris.length}) "${uri.val}"...`)
-        x(uri.val, {
+      (datum, cb2) => {
+        if(datum.releaseDate && datum.genres && datum.developer && datum.publisher && datum.img && datum.popularity && datum.rating) {
+          console.log(`SKIPPING game (${datum.index + 1} / ${dataWithGameUris.length}) "${datum.name}"...`)
+          cb2(null, datum)
+          return
+        }
+        if(!datum.gameUri) {
+          console.error(`No game URI for (${datum.index + 1} / ${dataWithGameUris.length}) "${datum.name}"! Skipping.`)
+          cb2(null, datum)
+          return
+        }
+        console.log(`Scraping page (${datum.index + 1} / ${dataWithGameUris.length}) "${datum.name}"...`)
+        x(datum.gameUri, {
           details: '.details_block',
           img: 'img.game_header_image_full@src',
-          revs: '.user_reviews_summary_row[itemprop="aggregateRating"]@data-store-tooltip'
-        })((e, data) => {
-          const details = data.details
+          revs: '.user_reviews_summary_row[itemprop="aggregateRating"]@data-store-tooltip',
+          userTags: ['.popular_tags > a.app_tag']
+        })((e, scraped) => {
+          if(e) {
+            console.error(e)
+          }
+
+          const details = scraped.details
             .split('\n')
             .map(txt => txt.trim())
             .filter(txt => txt.length > 0)
-          
-          const revs = data.revs.split(' ')
-          
-          cb2(e, {
-            name: getInDataBlock(details, 'Title'),
+
+          const revs = scraped.revs.split(' ')
+
+          const tags = scraped.userTags.map(t => t.trim())
+          const genres = getInDataBlock(details, 'Genre') || ''
+
+          cb2(e, Object.assign({}, datum, {
             releaseDate: getInDataBlock(details, 'Release Date'),
-            genres: getInDataBlock(details, 'Genre').split(',').map(g => g.trim()),
+            genres: genres.split(',').map(g => g.trim()),
             developer: getInDataBlock(details, 'Developer'),
             publisher: getInDataBlock(details, 'Publisher'),
-            url: uri.val,
-            img: data.img,
+            img: scraped.img,
             popularity: parseInt(revs[3].split(',').join(''), 10),
-            rating: parseInt(revs[0], 10)
-          })
+            rating: parseInt(revs[0], 10),
+            userTags: tags
+          }))
         })
       },
-      (e, data) => { console.log('Got ' + data.length + ' games!'); cb(e, data) }
+      (e, dataWithScrapedInfo) => {
+        if(e) {
+          console.error(e)
+          let validData = dataWithScrapedInfo
+          const errorIndex = dataWithScrapedInfo.findIndex(d => _.isNil(d))
+          if(errorIndex !== -1) {
+            console.log('Error index: ', errorIndex)
+            validData = dataWithScrapedInfo.slice(0, errorIndex)
+          }
+          console.log(`${validData.length} valid entries of ${dataWithScrapedInfo.length}`)
+          fs.outputJsonSync('progress.json', validData.concat(dataWithGameUris.slice(validData.length)))
+          console.log(`Wrote ${validData.length} progress entries into progress.json`)
+        }
+        console.log('Got ' + dataWithScrapedInfo.length + ' games!')
+        cb(e, dataWithScrapedInfo)
+      }
     ),
     (data, cb) => async.parallelLimit(data.map((d, ind) => (cb2) => {
+      if(!d.img) {
+        console.error(`No image URI for (${ind + 1} / ${data.length}) "${d.name}"! Skipping.`)
+        cb2()
+        return
+      }
       console.log(`Downloading image (${ind + 1} / ${data.length}) "${d.img}"...`)
       new Download()
         .get(d.img)
@@ -78,14 +173,17 @@ async.waterfall(
 function getInDataBlock(datablock, keyword) {
   const datumIndex = datablock.findIndex(d => d.startsWith(keyword))
   if(datumIndex === -1) {
-    throw new Error(`Can't find keyword ${keyword} in data block ${datablock}!`)
+    // throw new Error(`Can't find keyword ${keyword} in data block ${datablock}!`)
+    console.error(`Can't find keyword "${keyword}" in data block: [[${datablock}]]!`)
+    return undefined
   }
   let datum = datablock[datumIndex].substr(keyword.length + 1).trim()
   if(datum.length === 0) {
     datum = datablock[datumIndex + 1]
   }
   if(typeof datum == 'undefined') {
-    throw new Error(`Can't find keyword ${keyword} in data block ${datablock}!`)    
+    // throw new Error(`Can't find keyword ${keyword} in data block ${datablock}!`)
+    console.error(`Can't find keyword "${keyword}" in data block [[${datablock}]]!`)
   }
   return datum
 }
