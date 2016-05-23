@@ -1,0 +1,131 @@
+<!doctype html>
+<html class="no-js" lang="">
+
+<head>
+  <meta charset="utf-8">
+  <meta http-equiv="x-ua-compatible" content="ie=edge">
+  <title></title>
+  <meta name="description" content="">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <script src="data/games.js"></script>
+  <style>
+    body {
+      background: #000;
+      color: #fff;
+      position: absolute;
+      overflow: hidden;
+      width: 100%;
+      height: 100%;
+      margin: 0;
+      padding: 0;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-family: Arial;
+    }
+
+    .wrapper {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+
+    .wrapper img {
+      width: 80vw;
+      height: 60vh;
+      object-fit: contain;
+    }
+
+    .wrapper .caption {
+      text-align: center;
+      margin-bottom: 20px;
+      font-size: 20px;
+    }
+
+    .wrapper a {
+      color: #fff;
+      text-decoration: none;
+    }
+
+    .helper {
+      position: absolute;
+      left: 10px;
+      right: 10px;
+      top: 10px;
+      z-index: 1;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+
+    .btn {
+      border-radius: 10px;
+      font-family: Arial;
+      color: #dbdbdb;
+      background: #1c1c1c;
+      padding: 6px 6px 6px 6px;
+      text-decoration: none;
+    }
+
+    .btn-sm {
+      font-size: 10px;
+    }
+
+    .btn-lg {
+      font-size: 20px;
+    }
+  </style>
+</head>
+
+<body>
+  <div class="wrapper">
+    <a>
+      <div class="caption"></div>
+      <img>
+    </a>
+  </div>
+  <div class="helper">
+    <a class="btn btn-sm" id="undo" href="#">Undo</a>
+    <a class="btn btn-lg" id="new" href="#">Another</a>
+  </div>
+  <script>
+    var qs = document.querySelector.bind(document)
+    var i = qs('.wrapper img')
+    var link = qs('.wrapper a')
+    var cap = qs('.wrapper .caption')
+
+    var game = {}
+    var hist = []
+
+    var n = qs('#new')
+    n.onclick = function(e) { e.preventDefault(); newGame() }
+
+    var u = qs('#undo')
+    u.onclick = function(e) { e.preventDefault(); undo() }
+
+    newGame()
+
+    function newGame() {
+      hist.push(game)
+      game = randomInArray(games)
+      i.setAttribute('src', game.img)
+      link.setAttribute('href', game.uri)
+      cap.textContent = game.name
+    }
+
+    function undo() {
+      if(hist.length <= 1) {
+        return
+      }
+
+      var h = hist.pop()
+      i.setAttribute('src', h.img)
+      link.setAttribute('href', h.uri)
+      cap.textContent = h.name
+    }
+
+    function randomInArray(arr) { return arr[Math.floor(Math.random() * arr.length)] }
+  </script>
+</body>
+
+</html>
