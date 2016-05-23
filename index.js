@@ -14,7 +14,8 @@ const getLocalName = (uri) => url.parse(uri).pathname.split('/').slice(1).join('
 
 const gams = fs.readFileSync('gams.txt').toString().split('\n')
 
-const searchUris = gams.slice(0, 13)
+const searchUris = gams
+  // .slice(0, 13)
   .map(g => 'http://store.steampowered.com/search/?snr=1_4_4__12&term=' + encodeURI(g))
 
 async.waterfall(
@@ -71,7 +72,7 @@ async.waterfall(
     (games, cb) => cb(null, games.map(g => Object.assign({}, g, { img: path.join('data/images', encodeURI(getLocalName(g.img))) }))),
     (games, cb) => fs.outputFile('data/games.js', 'window.games = ' + JSON.stringify(games, null, 2), cb)
   ],
-  (err) => { if(err) { console.error(err) } console.log('Done!') }
+  (err) => { if(err) { console.error('ERROR:'); console.error(err) } else { console.log('Done!') } }
 )
 
 function getInDataBlock(datablock, keyword) {
